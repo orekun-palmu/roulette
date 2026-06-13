@@ -294,6 +294,34 @@
     color: var(--neon-cyan);
     text-shadow: 0 0 12px rgba(95,247,247,0.8);
   }
+
+  /* Multi Spin Controls Layout */
+  .multi-spin-controls {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    max-width: 360px;
+    margin: 12px auto 0;
+  }
+  .multi-spin-controls select {
+    width: 110px;
+    font-family: 'Orbitron', 'Noto Sans JP', sans-serif;
+  }
+  .btn-multi {
+    flex: 1;
+    font-family: 'Orbitron', monospace;
+    font-weight: 700;
+    border-color: rgba(95,247,247,0.4);
+    color: var(--neon-cyan);
+    text-shadow: 0 0 10px rgba(95,247,247,0.4);
+  }
+  .btn-multi:hover:not(:disabled) {
+    background: rgba(95,247,247,0.12);
+    box-shadow: 0 0 20px rgba(95,247,247,0.3);
+    color: #fff;
+  }
+  .btn-multi:disabled { opacity: .3; cursor: not-allowed; }
+
   @keyframes pulseBtn {
     from { box-shadow: 0 0 10px rgba(95,247,247,0.2); }
     to   { box-shadow: 0 0 30px rgba(95,247,247,0.5); }
@@ -483,7 +511,7 @@
   @media (max-width: 480px) {
     .tabs { overflow-x: auto; }
     .tab { white-space: nowrap; padding: 10px 14px; }
-    #spin-btn { max-width: 100%; }
+    #spin-btn, .multi-spin-controls { max-width: 100%; }
   }
 </style>
 </head>
@@ -503,7 +531,6 @@
     <button class="tab" onclick="switchTab('how')">使い方</button>
   </div>
 
-  <!-- SPIN PANEL -->
   <div id="panel-spin" class="panel active">
 
     <div class="card">
@@ -541,7 +568,25 @@
           <option value="">-- 参加者を選択 --</option>
         </select>
       </div>
-      <button id="spin-btn" onclick="spin()">⬡ SPIN ⬡</button>
+      
+      <button id="spin-btn" onclick="startSpin(1)">⬡ SPIN ⬡</button>
+
+      <div class="multi-spin-controls">
+        <select id="loop-count-select">
+          <option value="2">2連続 SPIN</option>
+          <option value="3">3連続 SPIN</option>
+          <option value="4">4連続 SPIN</option>
+          <option value="5">5連続 SPIN</option>
+          <option value="6">6連続 SPIN</option>
+          <option value="7">7連続 SPIN</option>
+          <option value="8">8連続 SPIN</option>
+          <option value="9">9連続 SPIN</option>
+          <option value="10" selected>10連続 SPIN</option>
+        </select>
+        <button id="multi-spin-btn" class="btn btn-multi" onclick="startSpin(parseInt(document.getElementById('loop-count-select').value))">EXECUTE</button>
+        <button id="ten-spin-btn" class="btn btn-cyan" style="font-family:'Orbitron', monospace; font-weight:700;" onclick="startSpin(10)">🔥 10連 SPIN</button>
+      </div>
+
       <div id="result-flash" class="result-flash">
         <div class="result-who" id="result-who"></div>
         <div class="result-text" id="result-text"></div>
@@ -550,7 +595,6 @@
 
   </div>
 
-  <!-- HISTORY PANEL -->
   <div id="panel-history" class="panel">
     <div id="summary-grid" class="summary-grid"></div>
     <div id="history-body">
@@ -568,7 +612,6 @@
     </div>
   </div>
 
-  <!-- HOW PANEL -->
   <div id="panel-how" class="panel">
     <div class="card how-section">
       <h3>参加者の登録</h3>
@@ -586,7 +629,7 @@
       <h3>ルーレットを回す</h3>
       <ol>
         <li>「参加者を選択」ドロップダウンから回す人を選ぶ</li>
-        <li><strong>SPIN</strong> ボタンでルーレットを回転させる</li>
+        <li>単発の場合は <strong>SPIN</strong> ボタン、連続の場合はセレクトボックスで回数を選択して実行するか、<strong>10連 SPIN</strong> ボタンを使用します</li>
         <li>結果が表示され、「履歴・一覧」タブに自動記録されます</li>
         <li>「当選」「当たり」「WIN」を含むアイテムが出ると紙吹雪演出が流れます</li>
       </ol>
@@ -613,6 +656,12 @@ let history = [];
 let spinning = false;
 let currentAngle = 0;
 let currentName = '';
+
+// 連続回転制御用の管理オブジェクト
+let multiSpinState = {
+  remaining: 0,
+  total: 0
+};
 
 function switchTab(t) {
   document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
@@ -765,17 +814,52 @@ function getWinnerIndex(angle) {
   return Math.floor(a / slice) % items.length;
 }
 
-function spin() {
+// 連続実行エントリ用のハンドラ関数
+function startSpin(count) {
   if (spinning || !items.length) return;
   if (!currentName) { alert('参加者を選択してください'); return; }
+  
+  multiSpinState.remaining = count;
+  multiSpinState.total = count;
+  
+  // 操作ボタン群を全面的にロック
+  setControlsDisabled(true);
+  executeSingleSpinAnimation();
+}
+
+// ボタンの無効化・テキスト制御
+function setControlsDisabled(disabled) {
+  document.getElementById('spin-btn').disabled = disabled;
+  document.getElementById('multi-spin-btn').disabled = disabled;
+  document.getElementById('ten-spin-btn').disabled = disabled;
+  document.getElementById('who-select').disabled = disabled;
+  
+  if (disabled) {
+    document.getElementById('spin-btn').classList.add('spinning');
+  } else {
+    document.getElementById('spin-btn').classList.remove('spinning');
+    document.getElementById('spin-btn').textContent = '⬡ SPIN ⬡';
+  }
+}
+
+// 1回分の回転アニメーション処理
+function executeSingleSpinAnimation() {
   spinning = true;
-  document.getElementById('spin-btn').disabled = true;
-  document.getElementById('spin-btn').classList.add('spinning');
-  document.getElementById('spin-btn').textContent = '⟳ SPINNING…';
   document.getElementById('result-flash').style.display = 'none';
 
-  const totalRot = Math.PI * 2 * (6 + Math.floor(Math.random() * 5)) + Math.random() * Math.PI * 2;
-  const duration = 4200;
+  // 連続実行中はユーザーを飽きさせないように演出を少し高速化 (1.8秒)
+  const isMulti = multiSpinState.total > 1;
+  const duration = isMulti ? 1800 : 4200;
+
+  // ボタン上に残りカウント数をフィードバック
+  if (isMulti) {
+    const currentStep = multiSpinState.total - multiSpinState.remaining + 1;
+    document.getElementById('spin-btn').textContent = `⟳ SPINNING (${currentStep}/${multiSpinState.total})...`;
+  } else {
+    document.getElementById('spin-btn').textContent = '⟳ SPINNING…';
+  }
+
+  const totalRot = Math.PI * 2 * (5 + Math.floor(Math.random() * 4)) + Math.random() * Math.PI * 2;
   const start = performance.now();
   const startAngle = currentAngle;
 
@@ -785,21 +869,42 @@ function spin() {
     const ease = 1 - Math.pow(1 - t, 4);
     currentAngle = startAngle + totalRot * ease;
     drawWheel(currentAngle);
+
     if (t < 1) {
       requestAnimationFrame(animate);
     } else {
       currentAngle = (startAngle + totalRot) % (Math.PI * 2);
       drawWheel(currentAngle);
+      
       const wi = getWinnerIndex(currentAngle);
       const winner = items[wi];
       const isHit = /当選|当たり|WIN|win|HIT|hit/.test(winner.label);
+      
       showResult(winner, isHit);
-      history.unshift({ name: currentName, result: winner.label, hit: isHit, time: new Date().toLocaleTimeString('ja-JP') });
+      
+      // 履歴にデータをプッシュ
+      history.unshift({ 
+        name: currentName, 
+        result: winner.label, 
+        hit: isHit, 
+        time: new Date().toLocaleTimeString('ja-JP') 
+      });
+      
       if (isHit) launchConfetti();
       spinning = false;
-      document.getElementById('spin-btn').disabled = false;
-      document.getElementById('spin-btn').classList.remove('spinning');
-      document.getElementById('spin-btn').textContent = '⬡ SPIN ⬡';
+
+      // 連続抽選の残り回数をデクリメント
+      multiSpinState.remaining--;
+      
+      if (multiSpinState.remaining > 0) {
+        // 次の回転へ遷移（演出の間隔として少しウェイトを入れる）
+        setTimeout(() => {
+          executeSingleSpinAnimation();
+        }, 600);
+      } else {
+        // すべての連続処理が完了したらロックを解除
+        setControlsDisabled(false);
+      }
     }
   }
   requestAnimationFrame(animate);
@@ -809,7 +914,14 @@ function showResult(winner, isHit) {
   const el = document.getElementById('result-flash');
   el.className = 'result-flash ' + (isHit ? 'hit' : 'miss');
   el.style.display = 'block';
-  document.getElementById('result-who').textContent = currentName + ' の結果';
+  
+  let labelText = currentName + ' の結果';
+  if (multiSpinState.total > 1) {
+    const curNum = multiSpinState.total - multiSpinState.remaining;
+    labelText += ` (${curNum}/${multiSpinState.total}回目)`;
+  }
+  
+  document.getElementById('result-who').textContent = labelText;
   document.getElementById('result-text').textContent = winner.label;
 }
 
